@@ -12,3 +12,10 @@ func array_append_empty(array):
 	array.resize(array.size() + 1)
 	array[-1] = []
 
+func atom(token):
+	if token.is_valid_float() or token.is_valid_integer():
+		return token.to_float()
+	else:
+		return token
+		
+
