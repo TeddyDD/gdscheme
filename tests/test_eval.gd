@@ -15,9 +15,9 @@ func teardown():
 	i = null
 	e = null
 
-func test_eval_int():
-	gut.assert_eq(i.eval(i.parse("(1)"),e), 1, "(1) should eval to 1")
-	gut.assert_eq(i.eval(i.parse("(2.0)"),e), 2.0, "(2.0) should eval to 2.0")
+func test_eval_number():
+	gut.assert_eq(i.eval(i.parse("(1)"),e), 1, "(1) should eval to 1 (int)")
+	gut.assert_eq(i.eval(i.parse("(2.0)"),e), 2.0, "(2.0) should eval to 2.0 (float)")
 	
 func test_const_symbol():
 	gut.assert_eq(i.eval(i.parse("(pi)"), e), 3.14, "(pi) should eval to 3.14")
