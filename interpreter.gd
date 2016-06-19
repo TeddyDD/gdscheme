@@ -46,3 +46,19 @@ func atom(token):
 		return token
 		
 
+# eval list x in env
+func eval(x, env):
+	prints("EVAL " , x)
+#	assert(typeof(x) == TYPE_ARRAY)
+	if typeof(x) == TYPE_ARRAY:
+		var head_type = typeof(x[0])
+		if head_type == TYPE_INT or head_type == TYPE_REAL:
+			return x[0]
+		elif head_type == TYPE_STRING and x.size() == 1:      # variable reference
+			return env[x[0]]
+		elif head_type == TYPE_STRING and x[0] == "define":   # define a variable
+			var variable = x[1]
+			var expr = x[2]
+			env[variable] = eval(expr, env)
+	else:
+		return x
