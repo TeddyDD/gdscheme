@@ -14,7 +14,7 @@ func test_empty():
 	gut.assert_eq(i.read_from_tokens([]), [], "Empty program should return empty array")
 	
 func test_simple_list():
-	var tokens = ["(","test", "1", "2", "3",")"]
+	var tokens = ["(","test", "1.0", "2.0", "3.0",")"]
 	var result = ["test", 1.0, 2.0, 3.0]
 	gut.assert_eq(i.read_from_tokens(tokens), result)
 	
@@ -28,7 +28,7 @@ func test_one_symbol_atom():
 	
 func test_one_number_atom():
 	var tokens = ["(","1",")"]
-	var result = [1.0]
+	var result = [1]
 	gut.assert_eq(i.read_from_tokens(tokens), result)
 	
 func test_empty_nested():
@@ -44,7 +44,7 @@ func test_empty_nested():
 	gut.assert_eq(i.read_from_tokens(tokens)[1].empty(), true, "Second array should be empty")
 	
 func test_one_level_nested():
-	var tokens = ["(","1","(","1",")",")"]
+	var tokens = ["(","1.0","(","1.0",")",")"]
 	var result = [1.0,[1.0]]
 	gut.assert_eq(typeof(i.read_from_tokens(tokens)[0]),TYPE_REAL, "first element should be float")
 	gut.assert_eq(typeof(i.read_from_tokens(tokens)[1]),TYPE_ARRAY, "second element should be array")
@@ -52,12 +52,12 @@ func test_one_level_nested():
 
 func test_simple_nested():
 	var tokens = ["(","1","(", "2", ")", "1",")"]
-	var result = [1.0, [2.0], 1.0]
+	var result = [1, [2], 1]
 	gut.assert_eq(i.read_from_tokens(tokens), result)
 
 func test_nested():
 	# program (begin (define r 10) (* pi (* r r)))
 	var tokens = ['(', 'begin', '(', 'define', 'r', '10', ')', '(', '*', 'pi', '(', '*', 'r', 'r', ')', ')', ')']
-	var result = ['begin', ['define', 'r', 10.0], ['*', 'pi', ['*', 'r', 'r']]]
+	var result = ['begin', ['define', 'r', 10], ['*', 'pi', ['*', 'r', 'r']]]
 	var got = i.read_from_tokens(tokens)
 	gut.assert_eq(got, result)

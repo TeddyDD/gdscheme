@@ -15,7 +15,7 @@ func test_symbol():
 	
 func test_integer():
 	gut.assert_eq(i.atom("1"), 1, "Integer token should return number")
-	gut.assert_eq(typeof(i.atom("1")), TYPE_REAL, "Integer shoult return float")
+	gut.assert_eq(typeof(i.atom("1")), TYPE_INT, "Integer shoult return int type")
 
 func test_float():
 	gut.assert_eq(i.atom("1.5"), 1.5, "Float token shoul return float")
