@@ -1,6 +1,8 @@
 
 extends Reference
 
+onready var env = preload("res://env.gd").new()
+
 func parse(program):
 	return read_from_tokens(tokenize(program))
 
