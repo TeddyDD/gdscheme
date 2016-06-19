@@ -6,6 +6,26 @@ func tokenize(program):
 	p = program.replace("(", " ( ").replace(")", " ) ").split(" ",false)
 	return Array(p)
 
+func read_from_tokens(tokens):
+	var prev_stack = []
+	var current = []
+	
+	for t in tokens:
+		if t == "(":
+			array_append_empty(current)
+			prev_stack.append(current)
+			current = current[-1] # current is reference to last element of current
+		elif t == ")":
+			current = prev_stack[-1]
+			prev_stack.pop_back()
+		else:
+			current.append(atom(t))
+	if current.empty():
+		return current
+	else:
+		assert(current.size()==1)
+		return current[0]
+
 func array_append_empty(array):
 	if array == null:
 		array = []
