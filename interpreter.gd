@@ -58,7 +58,10 @@ func eval(x, env):
 			return env[x[0]]
 		elif head_type == TYPE_STRING and x[0] == "define":   # define a variable
 			var variable = x[1]
-			var expr = x[2]
-			env[variable] = eval(expr, env)
+			var expr = eval(x[2], env)
+			env[variable] = expr
 	else:
-		return x
+		if typeof(x) == TYPE_STRING:
+			return env[x]
+		elif typeof(x) == TYPE_REAL or typeof(x) == TYPE_INT:
+			return x

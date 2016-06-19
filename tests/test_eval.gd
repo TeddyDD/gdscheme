@@ -25,8 +25,16 @@ func test_const_symbol():
 func test_define_variable():
 	i.eval(i.parse("(define x 1)"), e)
 	gut.assert_eq(i.eval(i.parse("(x)"), e), 1, "x variable defined to 1")
+	
 	i.eval(i.parse("(define y 5.2)"), e)
 	gut.assert_eq(i.eval(i.parse("(y)"), e), 5.2, "y variable defined to 5.2")
+	
+	i.eval(i.parse("(define mypi pi)"), e)
+	gut.p("Program: (define mypi pi)", 2)
+	gut.assert_eq(i.eval(i.parse("(mypi)"), e), 3.14, "define variable from other variable")
+	
+	i.eval(i.parse("(define y 0)"), e)
+	gut.assert_eq(i.eval(i.parse("(y)"), e), 0, "redefine variable y")
 
 #func test_eval_program():
 #	var program = "(define r 10.0)"
