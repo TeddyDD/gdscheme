@@ -1,6 +1,9 @@
 
 extends Reference
-	
+
+func parse(program):
+	return read_from_tokens(tokenize(program))
+
 func tokenize(program):
 	var p
 	p = program.replace("(", " ( ").replace(")", " ) ").split(" ",false)
