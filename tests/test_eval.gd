@@ -36,6 +36,11 @@ func test_define_variable():
 	i.eval(i.parse("(define y 0)"), e)
 	gut.assert_eq(i.eval(i.parse("(y)"), e), 0, "redefine variable y")
 
+func test_procedure():
+	gut.assert_eq(i.eval(i.parse("(+ 1 2)"), e), 3, "add two numbers")
+	gut.assert_eq(i.eval(i.parse("(* 3 4)"), e), 12, "multiply two numbers")
+	
+	
 #func test_eval_program():
 #	var program = "(define r 10.0)"
 #	var program2 = "(* pi (* r r))"

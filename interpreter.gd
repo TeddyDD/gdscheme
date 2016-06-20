@@ -60,6 +60,12 @@ func eval(x, env):
 			var variable = x[1]
 			var expr = eval(x[2], env)
 			env[variable] = expr
+		elif head_type == TYPE_STRING:
+			var proc = eval(x[0], env)
+			var args = []
+			for arg in range(1, x.size()):
+				args.append(eval(x[arg],env))
+			return proc.call_func(args)
 	else:
 		if typeof(x) == TYPE_STRING:
 			return env[x]
