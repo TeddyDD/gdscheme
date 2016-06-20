@@ -7,6 +7,7 @@ func standard_env():
 		"abs": funcref(self, "__abs"),
 		"car": funcref(self, "__car"),
 		"cdr": funcref(self, "__cdr"),
+		"+" : funcref(self, "__add"),
 		"*" : funcref(self, "__multiply"),
 		"pi": 3.14,
 	}
@@ -26,3 +27,7 @@ func __cdr(x):
 	
 func __multiply(x):
 	return float(x[0]) * float(x[1])
+	
+func __add(x):
+	return float(x[0]) + float(x[1])
+	
