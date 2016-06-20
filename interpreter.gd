@@ -38,7 +38,7 @@ func array_append_empty(array):
 	array[-1] = []
 
 func atom(token):
-	if token.is_valid_integer():
+	if token.is_valid_integer() and token.is_valid_float():
 		return token.to_int()
 	elif token.is_valid_float():
 		return token.to_float()
