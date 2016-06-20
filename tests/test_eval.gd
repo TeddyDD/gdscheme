@@ -39,7 +39,7 @@ func test_define_variable():
 func test_procedure():
 	gut.assert_eq(i.eval(i.parse("(+ 1 2)"), e), 3, "add two numbers")
 	gut.assert_eq(i.eval(i.parse("(* 3 4)"), e), 12, "multiply two numbers")
-	
+	gut.assert_eq(i.eval(i.parse("(+ (* 2 3) 1)"), e), 7, "2*3 + 7")
 	
 #func test_eval_program():
 #	var program = "(define r 10.0)"
