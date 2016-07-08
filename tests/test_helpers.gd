@@ -18,7 +18,7 @@ func test_empty_array_append():
 	e.resize(e.size() + 1)
 	e[-1] = []
 	gut.assert_eq(e,[[],[]], "alternative add empty array")
-	
-	var f = [[]]
-	i.array_append_empty(f)
-	gut.assert_eq(f,[[],[]], "custom add array empty method")
+#	
+#	var f = [[]]
+#	i.array_append_empty(f)
+#	gut.assert_eq(f,[[],[]], "custom add array empty method")
