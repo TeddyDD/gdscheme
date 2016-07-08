@@ -17,7 +17,7 @@ func read_from_tokens(tokens):
 	
 	for t in tokens:
 		if t == "(":
-			array_append_empty(current)
+			current.append([])
 			prev_stack.append(current)
 			current = current[-1] # current is reference to last element of current
 		elif t == ")":
@@ -30,12 +30,6 @@ func read_from_tokens(tokens):
 	else:
 		assert(current.size()==1)
 		return current[0]
-
-func array_append_empty(array):
-	if array == null:
-		array = []
-	array.resize(array.size() + 1)
-	array[-1] = []
 
 func atom(token):
 	if token.is_valid_integer() and token.is_valid_float():
