@@ -14,7 +14,7 @@ func standard_env():
 	return env
 	
 func __abs(s):
-	return abs(s)
+	return abs(s[0])
 	
 func __car(x):
 	return [x[0]]

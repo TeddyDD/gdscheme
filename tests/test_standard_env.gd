@@ -10,7 +10,7 @@ func teardown():
 	e = null
 	
 func test_math():
-	var result =  e["abs"].call_func(-1)
+	var result =  e["abs"].call_func([-1])
 	gut.assert_eq(result, 1)
 	
 func test_car_cdr():
