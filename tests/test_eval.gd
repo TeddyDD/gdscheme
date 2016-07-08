@@ -41,7 +41,10 @@ func test_procedure():
 	gut.assert_eq(i.eval(i.parse("(* 3 4)"), e), 12, "multiply two numbers")
 	gut.assert_eq(i.eval(i.parse("(+ (* 2 3) 1)"), e), 7, "2*3 + 7")
 	
-#func test_eval_program():
-#	var program = "(define r 10.0)"
-#	var program2 = "(* pi (* r r))"
-#	gut.assert_eq( i.eval(i.parse(program), e), str(314.0) ) 
+	gut.assert_eq(i.eval(i.parse("(abs -10)"),e), 10, "abs from 10")
+	
+func test_eval_program():
+	var program = "(define r 10.0)"
+	i.eval(i.parse(program), e)
+	var program2 = "(* pi (* r r))"
+	gut.assert_gt( i.eval(i.parse(program2), e), 314.0 ) 
