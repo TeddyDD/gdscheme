@@ -1,4 +1,4 @@
-extends "res://gut.gd".Test
+extends "res://addons/gut/test.gd"
 
 var interpeter = preload("res://interpreter.gd")
 
