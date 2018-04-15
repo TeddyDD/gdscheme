@@ -6,6 +6,9 @@ var env = preload("res://env.gd")
 var i = null
 var e = null
 
+func eval_parse(program):
+	return	i.eval(i.parse(program), e)
+
 
 func setup():
 	i = interpeter.new()
@@ -16,35 +19,35 @@ func teardown():
 	e = null
 
 func test_eval_number():
-	gut.assert_eq(i.eval(i.parse("(1)"),e), 1, "(1) should eval to 1 (int)")
-	gut.assert_eq(i.eval(i.parse("(2.0)"),e), 2.0, "(2.0) should eval to 2.0 (float)")
+	assert_eq(eval_parse("(1)"), 1, "(1) should eval to 1 (int)")
+	assert_eq(eval_parse("(2.0)"), 2.0, "(2.0) should eval to 2.0 (float)")
 	
 func test_const_symbol():
-	gut.assert_eq(i.eval(i.parse("(pi)"), e), 3.14, "(pi) should eval to 3.14")
+	assert_eq(eval_parse("(pi)"),  3.14, "(pi) should eval to 3.14")
 	
 func test_define_variable():
-	i.eval(i.parse("(define x 1)"), e)
-	gut.assert_eq(i.eval(i.parse("(x)"), e), 1, "x variable defined to 1")
+	eval_parse("(define x 1)")
+	assert_eq(eval_parse("(x)"),  1, "x variable defined to 1")
 	
-	i.eval(i.parse("(define y 5.2)"), e)
-	gut.assert_eq(i.eval(i.parse("(y)"), e), 5.2, "y variable defined to 5.2")
+	eval_parse("(define y 5.2)")
+	assert_eq(eval_parse("(y)"),  5.2, "y variable defined to 5.2")
 	
-	i.eval(i.parse("(define mypi pi)"), e)
-	gut.p("Program: (define mypi pi)", 2)
-	gut.assert_eq(i.eval(i.parse("(mypi)"), e), 3.14, "define variable from other variable")
+	eval_parse("(define mypi pi)")
+	#p("Program: (define mypi pi)", 2)
+	assert_eq(eval_parse("(mypi)"),  3.14, "define variable from other variable")
 	
-	i.eval(i.parse("(define y 0)"), e)
-	gut.assert_eq(i.eval(i.parse("(y)"), e), 0, "redefine variable y")
+	eval_parse("(define y 0)")
+	assert_eq(eval_parse("(y)"),  0, "redefine variable y")
 
 func test_procedure():
-	gut.assert_eq(i.eval(i.parse("(+ 1 2)"), e), 3, "add two numbers")
-	gut.assert_eq(i.eval(i.parse("(* 3 4)"), e), 12, "multiply two numbers")
-	gut.assert_eq(i.eval(i.parse("(+ (* 2 3) 1)"), e), 7, "2*3 + 7")
+	assert_eq(eval_parse("(+ 1 2)"),  3, "add two numbers")
+	assert_eq(eval_parse("(* 3 4)"),  12, "multiply two numbers")
+	assert_eq(eval_parse("(+ (* 2 3) 1)"),  7, "2*3 + 7")
 	
-	gut.assert_eq(i.eval(i.parse("(abs -10)"),e), 10, "abs from 10")
+	assert_eq(eval_parse("(abs -10)"), 10, "abs from 10")
 	
 func test_eval_program():
 	var program = "(define r 10.0)"
-	i.eval(i.parse(program), e)
+	eval_parse(program)
 	var program2 = "(* pi (* r r))"
-	gut.assert_gt( i.eval(i.parse(program2), e), 314.0 ) 
+	assert_eq( eval_parse(program2),  314.0 ) 

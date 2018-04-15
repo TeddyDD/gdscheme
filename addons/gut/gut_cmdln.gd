@@ -5,7 +5,7 @@
 #The MIT License (MIT)
 #=====================
 #
-#Copyright (c) 2015 Tom "Butch" Wesley
+#Copyright (c) 2017 Tom "Butch" Wesley
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
 #of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,7 @@
 # See the readme for a list of options and examples.  You can also use the -gh
 # option to get more information about how to use the command line interface.
 #
-# Version 4.0.0
+# Version 6.2.0
 ################################################################################
 extends SceneTree
 
@@ -267,7 +267,7 @@ func setup_options():
                               'with the GUI.'))
 	opts.add('-gunit_test_name', '', ('Name of a test to run.  Any test that contains the specified ' +
                                  'text will be run, all others will be skipped.'))
-	opts.add('-gutloc', 'res://addons/Gut/gut.gd', 'Full path (including name) of the gut script.  Default [default]')
+	opts.add('-gutloc', 'res://addons/gut/gut.gd', 'Full path (including name) of the gut script.  Default [default]')
 	opts.add('-gh', false, 'Print this help')
 	return opts
 
@@ -342,8 +342,4 @@ func _init():
 # exit if option is set.
 func _on_tests_finished():
 	if(options.should_exit):
-		if(_tester._summary.failed>0):
-			# kill self => return non-zero exit code
-			OS.kill(OS.get_process_ID())
-		else:
-			quit()
+		quit()

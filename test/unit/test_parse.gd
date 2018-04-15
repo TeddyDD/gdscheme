@@ -13,4 +13,4 @@ func teardown():
 func test_parse_program():
 	var program = "(begin (define r 10) (* pi (* r r)))"
 	var result = ['begin', ['define', 'r', 10], ['*', 'pi', ['*', 'r', 'r']]]
-	gut.assert_eq(i.parse(program), result)
+	assert_eq(i.parse(program), result)

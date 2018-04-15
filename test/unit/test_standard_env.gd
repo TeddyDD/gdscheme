@@ -11,8 +11,8 @@ func teardown():
 	
 func test_math():
 	var result =  e["abs"].call_func([-1])
-	gut.assert_eq(result, 1)
+	assert_eq(result, 1)
 	
 func test_car_cdr():
 	var array = [1,2,3]
-	gut.assert_eq(e["car"].call_func(array),[1])
+	assert_eq(e["car"].call_func(array),[1])
