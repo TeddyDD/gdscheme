@@ -16,15 +16,18 @@ func read_from_tokens(tokens):
 	var current = []
 	
 	for t in tokens:
-		if t == "(":
-			current.append([])
-			prev_stack.append(current)
-			current = current[-1] # current is reference to last element of current
-		elif t == ")":
-			current = prev_stack[-1]
-			prev_stack.pop_back()
-		else:
-			current.append(atom(t))
+		match t:
+			"(":
+				current.append([])
+				prev_stack.append(current)
+				# current is reference to last element of current
+				current = current[-1]
+			")":
+				current = prev_stack[-1]
+				prev_stack.pop_back()
+			_:
+				current.append(atom(t))
+
 	if current.empty():
 		return current
 	else:
