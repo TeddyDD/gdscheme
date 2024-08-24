@@ -1,613 +1,971 @@
-################################################################################
-#(G)odot (U)nit (T)est class
+extends 'res://addons/gut/gut_to_move.gd'
+class_name GutMain
+
+# ##############################################################################
 #
-################################################################################
-#The MIT License (MIT)
-#=====================
+# View the readme at https://github.com/bitwes/Gut/blob/master/README.md for usage
+# details.  You should also check out the github wiki at:
+# https://github.com/bitwes/Gut/wiki
 #
-#Copyright (c) 2017 Tom "Butch" Wesley
-#
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
-#
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
-#
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
-#
-################################################################################
-# View readme for usage details.
-#
-# Version 6.2.0
-################################################################################
-extends "res://addons/gut/gut_gui.gd"
+# ##############################################################################
 
 
 # ###########################
-# Editor Variables
-# ###########################
-export var _run_on_load = false
-export(String) var _select_script = null
-export(String) var _tests_like = null
-export var _should_print_to_console = true setget set_should_print_to_console, get_should_print_to_console
-export(int, 'Failures only', 'Tests and failures', 'Everything') var _log_level = 1 setget set_log_level, get_log_level
-
-# This var is JUST used to expose this setting in the editor
-# the var that is used is in the _yield_between hash.
-export var _yield_between_tests = true setget set_yield_between_tests, get_yield_between_tests
-export var _disable_strict_datatype_checks = false setget disable_strict_datatype_checks, is_strict_datatype_checks_disabled
-# The prefix used to get tests.
-export var _test_prefix = 'test_'
-export var _file_prefix = 'test_'
-export var _file_extension = '.gd'
-
-
-# Allow user to add test directories via editor.  This is done with strings
-# instead of an array because the interface for editing arrays is really
-# cumbersome and complicates testing because arrays set through the editor
-# apply to ALL instances.  This also allows the user to use the built in
-# dialog to pick a directory.
-export(String, DIR) var _directory1 = ''
-export(String, DIR) var _directory2 = ''
-export(String, DIR) var _directory3 = ''
-export(String, DIR) var _directory4 = ''
-export(String, DIR) var _directory5 = ''
-export(String, DIR) var _directory6 = ''
-
-
-# ###########################
-# Other Vars
+# Constants
 # ###########################
 const LOG_LEVEL_FAIL_ONLY = 0
 const LOG_LEVEL_TEST_AND_FAILURES = 1
 const LOG_LEVEL_ALL_ASSERTS = 2
 const WAITING_MESSAGE = '/# waiting #/'
 const PAUSE_MESSAGE = '/# Pausing.  Press continue button...#/'
+const COMPLETED = 'completed'
 
-var _stop_pressed = false
+# ###########################
+# Signals
+# ###########################
+signal start_pause_before_teardown
+signal end_pause_before_teardown
 
-# Tests to run for the current script
-var _tests = []
-# all the scripts that should be ran as test scripts
-var _test_scripts = []
+signal start_run
+signal end_run
+signal start_script(test_script_obj)
+signal end_script
+signal start_test(test_name)
+signal end_test
+
+
+# ###########################
+# Settings
+#
+# These are properties that are usually set before a run is started through
+# gutconfig.
+# ###########################
+
+var _inner_class_name = ''
+## When set, GUT will only run Inner-Test-Classes that contain this string.
+var inner_class_name = _inner_class_name :
+	get: return _inner_class_name
+	set(val): _inner_class_name = val
+
+var _ignore_pause_before_teardown = false
+## For batch processing purposes, you may want to ignore any calls to
+## pause_before_teardown that you forgot to remove_at.
+var ignore_pause_before_teardown = _ignore_pause_before_teardown :
+	get: return _ignore_pause_before_teardown
+	set(val): _ignore_pause_before_teardown = val
+
+var _log_level = 1
+## The log detail level.  Valid values are 0 - 2.  Larger values do not matter.
+var log_level = _log_level:
+	get: return _log_level
+	set(val): _set_log_level(val)
+
+# TODO 4.0
+# This appears to not be used anymore.  Going to wait for more tests to be
+# ported before removing.
+var _disable_strict_datatype_checks = false
+var disable_strict_datatype_checks = false :
+	get: return _disable_strict_datatype_checks
+	set(val): _disable_strict_datatype_checks = val
+
+var _export_path = ''
+## Path to file that GUT will create which holds a list of all test scripts so
+## that GUT can run tests when a project is exported.
+var export_path = '' :
+	get: return _export_path
+	set(val): _export_path = val
+
+var _include_subdirectories = false
+## Setting this to true will make GUT search all subdirectories of any directory
+## you have configured GUT to search for tests in.
+var include_subdirectories = _include_subdirectories :
+	get: return _include_subdirectories
+	set(val): _include_subdirectories = val
+
+
+var _double_strategy = GutUtils.DOUBLE_STRATEGY.SCRIPT_ONLY
+## TODO rework what this is and then document it here.
+var double_strategy = _double_strategy  :
+	get: return _double_strategy
+	set(val):
+		if(GutUtils.DOUBLE_STRATEGY.values().has(val)):
+			_double_strategy = val
+			_doubler.set_strategy(double_strategy)
+		else:
+			_lgr.error(str("gut.gd:  invalid double_strategy ", val))
+
+var _pre_run_script = ''
+## Path to the script that will be run before all tests are run.  This script
+## must extend GutHookScript
+var pre_run_script = _pre_run_script :
+	get: return _pre_run_script
+	set(val): _pre_run_script = val
+
+var _post_run_script = ''
+## Path to the script that will run after all tests have run.  The script
+## must extend GutHookScript
+var post_run_script = _post_run_script :
+	get: return _post_run_script
+	set(val): _post_run_script = val
+
+var _color_output = false
+## Flag to color output at the command line and in the GUT GUI.
+var color_output = false :
+	get: return _color_output
+	set(val):
+		_color_output = val
+		_lgr.disable_formatting(!_color_output)
+
+var _junit_xml_file = ''
+## The full path to where GUT should write a JUnit compliant XML file to which
+## contains the results of all tests run.
+var junit_xml_file = '' :
+	get: return _junit_xml_file
+	set(val): _junit_xml_file = val
+
+var _junit_xml_timestamp = false
+## When true and junit_xml_file is set, the file name will include a
+## timestamp so that previous files are not overwritten.
+var junit_xml_timestamp = false :
+	get: return _junit_xml_timestamp
+	set(val): _junit_xml_timestamp = val
+
+## The minimum amout of time GUT will wait before pausing for 1 frame to allow
+## the screen to paint.  GUT checkes after each test to see if enough time has
+## passed.
+var paint_after = .1:
+	get: return paint_after
+	set(val): paint_after = val
+
+var _unit_test_name = ''
+## When set GUT will only run tests that contain this string.
+var unit_test_name = _unit_test_name :
+	get: return _unit_test_name
+	set(val): _unit_test_name = val
+
+var _parameter_handler = null
+# This is populated by test.gd each time a paramterized test is encountered
+# for the first time.
+## FOR INTERNAL USE ONLY
+var parameter_handler = _parameter_handler :
+	get: return _parameter_handler
+	set(val):
+		_parameter_handler = val
+		_parameter_handler.set_logger(_lgr)
+
+var _lgr = GutUtils.get_logger()
+# Local reference for the common logger.
+## FOR INERNAL USE ONLY
+var logger = _lgr :
+	get: return _lgr
+	set(val):
+		_lgr = val
+		_lgr.set_gut(self)
+
+var _add_children_to = self
+# Sets the object that GUT will add test objects to as it creates them.  The
+# default is self, but can be set to other objects so that GUT is not obscured
+# by the objects added during tests.
+## FOR INERNAL USE ONLY
+var add_children_to = self :
+	get: return _add_children_to
+	set(val): _add_children_to = val
+
+
+var _treat_error_as_failure = true
+var treat_error_as_failure = _treat_error_as_failure:
+	get: return _treat_error_as_failure
+	set(val): _treat_error_as_failure = val
+
+# ------------
+# Read only
+# ------------
+var _test_collector = GutUtils.TestCollector.new()
+func get_test_collector():
+	return _test_collector
+
+# var version = null :
+func get_version():
+	return GutUtils.version_numbers.gut_version
+
+var _orphan_counter =  GutUtils.OrphanCounter.new()
+func get_orphan_counter():
+	return _orphan_counter
+
+var _autofree = GutUtils.AutoFree.new()
+func get_autofree():
+	return _autofree
+
+var _stubber = GutUtils.Stubber.new()
+func get_stubber():
+	return _stubber
+
+var _doubler = GutUtils.Doubler.new()
+func get_doubler():
+	return _doubler
+
+var _spy = GutUtils.Spy.new()
+func get_spy():
+	return _spy
+
+var _is_running = false
+func is_running():
+	return _is_running
+
+
+# ###########################
+# Private
+# ###########################
+var  _should_print_versions = true # used to cut down on output in tests.
+var _should_print_summary = true
+
+var _file_prefix = 'test_'
+var _inner_class_prefix = 'Test'
+
+var _select_script = ''
+var _last_paint_time = 0.0
+var _strutils = GutUtils.Strutils.new()
+
+# The instance that is created from _pre_run_script.  Accessible from
+# get_pre_run_script_instance.  These are created at the start of the run
+# and then referenced at the appropriate time.  This allows us to validate the
+# scripts prior to running.
+var _pre_run_script_instance = null
+var _post_run_script_instance = null
+
+var _script_name = null
 
 # The instanced scripts.  This is populated as the scripts are run.
 var _test_script_objects = []
 
 var _waiting = false
-var _done = false
 
+# msecs ticks when run was started
+var _start_time = 0.0
+
+# Collected Test instance for the current test being run.
 var _current_test = null
-var _log_text = ""
-
 var _pause_before_teardown = false
-# when true _pause_before_teardown will be ignored.  useful
-# when batch processing and you don't want to watch.
-var _ignore_pause_before_teardown = false
-var _wait_timer = Timer.new()
 
-var _yield_between = {
-	should = false,
-	timer = Timer.new(),
-	after_x_tests = 5,
-	tests_since_last_yield = 0
-}
 
-var _was_yield_method_called = false
-# used when yielding to gut instead of some other
-# signal.  Start with set_yield_time()
-var _yield_timer = Timer.new()
-var _runtime_timer = Timer.new()
-const RUNTIME_START_TIME = float(20000.0)
+# Used to cancel importing scripts if an error has occurred in the setup.  This
+# prevents tests from being run if they were exported and ensures that the
+# error displayed is seen since importing generates a lot of text.
+#
+# TODO this appears to only be checked and never set anywhere.  Verify that this
+# was not broken somewhere and remove if no longer used.
+var _cancel_import = false
 
-var _unit_test_name = ''
-var Summary = load('res://addons/gut/summary.gd')
-var _new_summary = null
-
-var _yielding_to = {
-	obj = null,
-	signal_name = ''
-}
-
-const SIGNAL_TESTS_FINISHED = 'tests_finished'
-const SIGNAL_STOP_YIELD_BEFORE_TEARDOWN = 'stop_yeild_before_teardown'
+# this is how long Gut will wait when there are items that must be queued free
+# when a test completes (due to calls to add_child_autoqfree)
+var _auto_queue_free_delay = .1
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 func _init():
-	add_user_signal(SIGNAL_TESTS_FINISHED)
-	add_user_signal(SIGNAL_STOP_YIELD_BEFORE_TEARDOWN)
-	add_user_signal('timeout')
+	# When running tests for GUT itself, GutUtils has been setup to always return
+	# a new logger so this does not set the gut instance on the base logger
+	# when creating test instances of GUT.
+	_lgr.set_gut(self)
 
-# ------------------------------------------------------------------------------
-# Connect all the controls created in the parent class to the methods here.
-# ------------------------------------------------------------------------------
-func _connect_controls():
-	_ctrls.copy_button.connect("pressed", self, "_copy_button_pressed")
-	_ctrls.clear_button.connect("pressed", self, "clear_text")
-	_ctrls.continue_button.connect("pressed", self, "_on_continue_button_pressed")
-	_ctrls.ignore_continue_checkbox.connect('pressed', self, '_on_ignore_continue_checkbox_pressed')
-	_ctrls.log_level_slider.connect("value_changed", self, "_on_log_level_slider_changed")
-	_ctrls.stop_button.connect("pressed", self, '_on_stop_button_pressed')
-	_ctrls.run_rest.connect('pressed', self, '_on_run_rest_pressed')
-	_ctrls.previous_button.connect("pressed", self, '_on_previous_button_pressed')
-	_ctrls.next_button.connect("pressed", self, '_on_next_button_pressed')
-	_ctrls.scripts_drop_down.connect('item_selected', self, '_on_script_selected')
-	_ctrls.run_button.connect("pressed", self, "_on_run_button_pressed")
+	_doubler.set_stubber(_stubber)
+	_doubler.set_spy(_spy)
+	_doubler.set_gut(self)
+
+	# TODO remove_at these, universal logger should fix this.
+	_doubler.set_logger(_lgr)
+	_spy.set_logger(_lgr)
+	_stubber.set_logger(_lgr)
+	_test_collector.set_logger(_lgr)
+
+
 
 # ------------------------------------------------------------------------------
 # Initialize controls
 # ------------------------------------------------------------------------------
 func _ready():
-	set_it_up()
-	set_process_input(true)
-	_connect_controls()
-	set_position(get_position() + Vector2(0, 20))
-
-	add_child(_wait_timer)
-	_wait_timer.set_wait_time(1)
-	_wait_timer.set_one_shot(true)
-
-	add_child(_yield_between.timer)
-	_wait_timer.set_one_shot(true)
-
-	add_child(_yield_timer)
-	_yield_timer.set_one_shot(true)
-	_yield_timer.connect('timeout', self, '_yielding_callback')
-
-	# This timer is started, but it should never finish.  Used
-	# to determine how long it took to run the tests since
-	# getting the time and doing time math is rediculous in godot.
-	add_child(_runtime_timer)
-	_runtime_timer.set_one_shot(true)
-	_runtime_timer.set_wait_time(RUNTIME_START_TIME)
-
-	add_directory(_directory1)
-	add_directory(_directory2)
-	add_directory(_directory3)
-	add_directory(_directory4)
-	add_directory(_directory5)
-	add_directory(_directory6)
+	if(_should_print_versions):
+		_lgr.log('---  GUT  ---')
+		_lgr.info(str('using [', OS.get_user_data_dir(), '] for temporary output.'))
 
 	if(_select_script != null):
 		select_script(_select_script)
 
-	if(_tests_like != null):
-		set_unit_test_name(_tests_like)
+	_print_versions()
 
-	if(_run_on_load):
-		test_scripts(_select_script == null)
-	show()
+# ------------------------------------------------------------------------------
+# Runs right before free is called.  Can't override `free`.
+# ------------------------------------------------------------------------------
+func _notification(what):
+	if(what == NOTIFICATION_PREDELETE):
+		for ts in _test_script_objects:
+			if(is_instance_valid(ts)):
+				ts.free()
 
-#####################
+		_test_script_objects = []
+
+
+func _print_versions(send_all = true):
+	if(!_should_print_versions):
+		return
+
+	var info = GutUtils.version_numbers.get_version_text()
+
+	if(send_all):
+		p(info)
+	else:
+		_lgr.get_printer('gui').send(info + "\n")
+
+
+
+
+# ####################
+#
+# Accessor code
+#
+# ####################
+
+
+# ------------------------------------------------------------------------------
+# Set the log level.  Use one of the various LOG_LEVEL_* constants.
+# ------------------------------------------------------------------------------
+func _set_log_level(level):
+	_log_level = max(level, 0)
+
+	# Level 0 settings
+	_lgr.set_less_test_names(level == 0)
+	# Explicitly always enabled
+	_lgr.set_type_enabled(_lgr.types.normal, true)
+	_lgr.set_type_enabled(_lgr.types.error, true)
+	_lgr.set_type_enabled(_lgr.types.pending, true)
+
+	# Level 1 types
+	_lgr.set_type_enabled(_lgr.types.warn, level > 0)
+	_lgr.set_type_enabled(_lgr.types.deprecated, level > 0)
+
+	# Level 2 types
+	_lgr.set_type_enabled(_lgr.types.passed, level > 1)
+	_lgr.set_type_enabled(_lgr.types.info, level > 1)
+	_lgr.set_type_enabled(_lgr.types.debug, level > 1)
+
+# ####################
 #
 # Events
 #
-#####################
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _process(delta):
-	if(_is_running):
-		_ctrls.runtime_label.set_text(str(RUNTIME_START_TIME - _runtime_timer.get_time_left()).pad_decimals(3) + ' s')
-
-# ------------------------------------------------------------------------------
-# Timeout for the built in timer.  emits the timeout signal.  Start timer
-# with set_yield_time()
-# ------------------------------------------------------------------------------
-func _yielding_callback(from_obj=false):
-	if(_yielding_to.obj):
-		_yielding_to.obj.disconnect(_yielding_to.signal_name, self, '_yielding_callback')
-		_yielding_to.obj = null
-		_yielding_to.signal_name = ''
-
-	if(from_obj):
-		# we must yiled for a little longer after the signal is emitted so that
-		# the signal can propigate to other objects.  This was discovered trying
-		# to assert that obj/signal_name was emitted.  Without this extra delay
-		# the yield returns and processing finishes before the rest of the
-		# objects can get the signal.  This works b/c the timer will timeout
-		# and come back into this method but from_obj will be false.
-		_yield_timer.set_wait_time(.1)
-		_yield_timer.start()
-	else:
-		emit_signal('timeout')
-
-# ------------------------------------------------------------------------------
-# Run either the selected test or all tests.
-# ------------------------------------------------------------------------------
-func _on_run_button_pressed():
-	test_scripts()
-
-# ------------------------------------------------------------------------------
-# Continue processing after pause.
-# ------------------------------------------------------------------------------
-func _on_continue_button_pressed():
+# ####################
+func end_teardown_pause():
 	_pause_before_teardown = false
-	_ctrls.continue_button.set_disabled(true)
-	emit_signal(SIGNAL_STOP_YIELD_BEFORE_TEARDOWN)
-
-# ------------------------------------------------------------------------------
-# Change the log level.  Will be visible the next time tests are run.
-# ------------------------------------------------------------------------------
-func _on_log_level_slider_changed(value):
-	_log_level = _ctrls.log_level_slider.get_value()
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_previous_button_pressed():
-	if(_ctrls.scripts_drop_down.get_selected() > 0):
-		_ctrls.scripts_drop_down.select(_ctrls.scripts_drop_down.get_selected() -1)
-	_update_controls()
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_next_button_pressed():
-	if(_ctrls.scripts_drop_down.get_selected() < _ctrls.scripts_drop_down.get_item_count() -1):
-		_ctrls.scripts_drop_down.select(_ctrls.scripts_drop_down.get_selected() +1)
-	_update_controls()
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_stop_button_pressed():
-	_stop_pressed = true
-	_ctrls.stop_button.set_disabled(true)
-	# short circuit any yielding or yielded tests
-	if(!_ctrls.continue_button.is_disabled()):
-		_on_continue_button_pressed()
-	else:
-		_waiting = false
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_ignore_continue_checkbox_pressed():
-	_ignore_pause_before_teardown = _ctrls.ignore_continue_checkbox.is_pressed()
-	# If you want to ignore them, then you probably just want to continue
-	# running, so we'll save you a click.
-	if(!_ctrls.continue_button.is_disabled()):
-		_on_continue_button_pressed()
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_script_selected(id):
-	_update_controls()
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func _on_run_rest_pressed():
-	test_scripts(true)
+	_waiting = false
+	end_pause_before_teardown.emit()
 
 #####################
 #
 # Private
 #
 #####################
+func _log_test_children_warning(test_script):
+	if(!_lgr.is_type_enabled(_lgr.types.orphan)):
+		return
 
-# ------------------------------------------------------------------------------
-# Parses out the tests based on the _test_prefix.  Fills the _tests array with
-# instances of OneTest.
-# ------------------------------------------------------------------------------
-func _parse_tests(script):
-	var file = File.new()
-	var line = ""
-	var line_count = 0
+	var kids = test_script.get_children()
+	if(kids.size() > 1):
+		var msg = ''
+		if(_log_level == 2):
+			msg = "Test script still has children when all tests finisehd.\n"
+			for i in range(kids.size()):
+				msg += str("  ", _strutils.type2str(kids[i]), "\n")
+			msg += "You can use autofree, autoqfree, add_child_autofree, or add_child_autoqfree to automatically free objects."
+		else:
+			msg = str("Test script has ", kids.size(), " unfreed children.  Increase log level for more details.")
 
-	file.open(script, 1)
-	while(!file.eof_reached()):
-		line_count += 1
-		line = file.get_line()
-		#Add a test
-		if(line.begins_with("func " + _test_prefix)):
-			var from = line.find(_test_prefix)
-			var line_len = line.find("(") - from
-			var new_test = OneTest.new()
-			new_test.name = line.substr(from, line_len)
-			new_test.line_number = line_count
-			_tests.append(new_test)
-
-	file.close()
+		_lgr.warn(msg)
 
 
-# ------------------------------------------------------------------------------
-# Convert the _summary dictionary into text
-# ------------------------------------------------------------------------------
-func _get_summary_text():
-	var to_return = "*****************\nRun Summary\n*****************\n"
+func _log_end_run():
+	if(_should_print_summary):
+		var summary = GutUtils.Summary.new(self)
+		summary.log_end_run()
 
-	to_return += "\n" + _new_summary.get_summary_text() + "\n"
 
-	if(_new_summary.get_totals().tests > 0):
-		to_return +=  '+++ ' + str(_new_summary.get_totals().passing) + ' passed ' + str(_new_summary.get_totals().failing) + ' failed.  ' + \
-		              "Tests finished in:  " + _ctrls.runtime_label.get_text() + ' +++'
-		var c = Color(0, 1, 0)
-		if(_new_summary.get_totals().failing > 0):
-			c = Color(1, 0, 0)
-		elif(_new_summary.get_totals().pending > 0):
-			c = Color(1, 1, .8)
+func _validate_hook_script(path):
+	var result = {
+		valid = true,
+		instance = null
+	}
 
-		_ctrls.text_box.add_color_region('+++', '+++', c)
+	# empty path is valid but will have a null instance
+	if(path == ''):
+		return result
+
+	if(FileAccess.file_exists(path)):
+		var inst = load(path).new()
+		if(inst and inst is GutHookScript):
+			result.instance = inst
+			result.valid = true
+		else:
+			result.valid = false
+			_lgr.error('The hook script [' + path + '] does not extend GutHookScript')
 	else:
-		to_return += '+++ No tests ran +++'
-		_ctrls.text_box.add_color_region('+++', '+++', Color(1, 0, 0))
+		result.valid = false
+		_lgr.error('The hook script [' + path + '] does not exist.')
 
-	if(_summary.moved_methods > 0):
-		to_return += "\nMoved Methods (" + str(_summary.moved_methods) + ')' + """
--------------
-It looks like you have some methods that have been moved.  These methods were
-moved from the gut object to the test object so that you don't have to prefix
-them with 'gut.'.  This means less typing for you and better organization of
-the code.  I'm sorry for the inconvenience but I promise this will make things
-easier in the future...I'm pretty sure at least.  Thanks for using Gut!"""
+	return result
 
-	return to_return + "\n\n"
+
+# ------------------------------------------------------------------------------
+# Runs a hook script.  Script must exist, and must extend
+# GutHookScript or addons/gut/hook_script.gd
+# ------------------------------------------------------------------------------
+func _run_hook_script(inst):
+	if(inst != null):
+		inst.gut = self
+		inst.run()
+	return inst
 
 # ------------------------------------------------------------------------------
 # Initialize variables for each run of a single test script.
 # ------------------------------------------------------------------------------
 func _init_run():
+	var valid = true
+	_test_collector.set_test_class_prefix(_inner_class_prefix)
 	_test_script_objects = []
-	_new_summary = Summary.new()
-	_summary.tally_passed = 0
-	_summary.tally_failed = 0
-
-	_log_text = ""
-
 	_current_test = null
-
 	_is_running = true
-	_update_controls()
 
-	_runtime_timer.start()
+	var pre_hook_result = _validate_hook_script(_pre_run_script)
+	_pre_run_script_instance = pre_hook_result.instance
+	var post_hook_result = _validate_hook_script(_post_run_script)
+	_post_run_script_instance  = post_hook_result.instance
 
-	_yield_between.tests_since_last_yield = 0
-	._init_run()
-	_ctrls.script_progress.set_max(_test_scripts.size())
-	_ctrls.script_progress.set_value(0)
+	valid = pre_hook_result.valid and  post_hook_result.valid
+
+	return valid
+
 
 # ------------------------------------------------------------------------------
 # Print out run information and close out the run.
 # ------------------------------------------------------------------------------
 func _end_run():
-	var failed_tests = []
-	var more_than_one = _test_script_objects.size() > 1
-
-	p(_get_summary_text(), 0)
-
-	# For some reason the text edit control isn't scrolling to the bottom after
-	# the summary is printed.  As a workaround, yield for a short time and
-	# then move the cursor.  I found this workaround through trial and error.
-	_yield_between.timer.set_wait_time(0.001)
-	_yield_between.timer.start()
-	yield(_yield_between.timer, 'timeout')
-	_ctrls.text_box.cursor_set_line(_ctrls.text_box.get_line_count())
-
-	_runtime_timer.stop()
+	_log_end_run()
 	_is_running = false
-	update()
-	_update_controls()
-	emit_signal(SIGNAL_TESTS_FINISHED)
-	set_title("Finished.  " + str(get_fail_count()) + " failures.")
+
+	_run_hook_script(get_post_run_script_instance())
+	_export_results()
+	end_run.emit()
+
 
 # ------------------------------------------------------------------------------
-# Checks the passed in thing to see if it is a "function state" object that gets
-# returned when a function yields.
+# Add additional export types here.
 # ------------------------------------------------------------------------------
-func _is_function_state(script_result):
-	return script_result != null and \
-	       typeof(script_result) == TYPE_OBJECT and \
-	       script_result is GDScriptFunctionState
+func _export_results():
+	if(_junit_xml_file != ''):
+		_export_junit_xml()
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func _export_junit_xml():
+	var exporter = GutUtils.JunitXmlExport.new()
+	var output_file = _junit_xml_file
+
+	if(_junit_xml_timestamp):
+		var ext = "." + output_file.get_extension()
+		output_file = output_file.replace(ext, str("_", Time.get_unix_time_from_system(), ext))
+
+	var f_result = exporter.write_file(self, output_file)
+	if(f_result == OK):
+		p(str("Results saved to ", output_file))
+
 
 # ------------------------------------------------------------------------------
 # Print out the heading for a new script
 # ------------------------------------------------------------------------------
-func _print_script_heading(script_name):
-	p("/-----------------------------------------")
-	p("Testing Script " + script_name, 0)
-	if(_unit_test_name != ''):
-		p('  Only running tests like: "' + _unit_test_name + '"')
-	p("-----------------------------------------/")
+func _print_script_heading(coll_script):
+	if(_does_class_name_match(_inner_class_name, coll_script.inner_class_name)):
+		_lgr.log(str("\n\n", coll_script.get_full_name()), _lgr.fmts.underline)
+
 
 # ------------------------------------------------------------------------------
-# Initialize a new test script object.  The file is loaded from the passed in path
-# and the tests are parsed out.
+# Yes if the class name is null or the script's class name includes class_name
 # ------------------------------------------------------------------------------
-func _init_test_script(script_path):
-	_parse_tests(script_path)
-	var test_script = load(script_path).new()
-	add_child(test_script)
+func _does_class_name_match(the_class_name, script_class_name):
+	return (the_class_name == null or the_class_name == '') or \
+		(script_class_name != null and str(script_class_name).findn(the_class_name) != -1)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func _setup_script(test_script, collected_script):
 	test_script.gut = self
+	test_script.set_logger(_lgr)
+	_add_children_to.add_child(test_script)
+	_test_script_objects.append(test_script)
 
-	return test_script
+	if(!test_script._was_ready_called):
+		test_script._do_ready_stuff()
+		_lgr.warn(str("!!! YOU HAVE UPSET YOUR GUT !!!\n",
+			"You have overridden _ready in [", collected_script.get_filename_and_inner(), "] ",
+			"but it does not call super._ready().  New additions (or maybe old ",
+			"by the time you see this) require that super._ready() is called.",
+			"\n\n",
+			"GUT is working around this infraction, but may not be able to in ",
+			"the future.  GUT also reserves the right to decide it does not want ",
+			"to work around it in the future.  ",
+			"You should probably use before_all instead of _ready.  I can think ",
+			"of a few reasons why you would want to use _ready but I won't list ",
+			"them here because I think they are bad ideas.  I know they are bad ",
+			"ideas because I did them.  Hence the warning.  This message is ",
+			"intentially long so that it bothers you and you change your ways.\n\n",
+			"Thank you for using GUT."))
+
 
 # ------------------------------------------------------------------------------
-# Just gets more logic out of _test_the_scripts.  Decides if we should yield after
-# this test based on flags and counters.
+# returns self so it can be integrated into the yield call.
 # ------------------------------------------------------------------------------
-func _should_yield_now():
-	var should = _yield_between.should and \
-	             _yield_between.tests_since_last_yield == _yield_between.after_x_tests
-	if(should):
-		_yield_between.tests_since_last_yield = 0
+func _wait_for_continue_button():
+	p(PAUSE_MESSAGE, 0)
+	_waiting = true
+	return self
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func _get_indexes_matching_script_name(script_name):
+	var indexes = [] # empty runs all
+	for i in range(_test_collector.scripts.size()):
+		if(_test_collector.scripts[i].get_filename().find(script_name) != -1):
+			indexes.append(i)
+	return indexes
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func _get_indexes_matching_path(path):
+	var indexes = []
+	for i in range(_test_collector.scripts.size()):
+		if(_test_collector.scripts[i].path == path):
+			indexes.append(i)
+	return indexes
+
+
+# ------------------------------------------------------------------------------
+# Execute all calls of a parameterized test.
+# ------------------------------------------------------------------------------
+func _run_parameterized_test(test_script, test_name):
+	await _run_test(test_script, test_name)
+
+	if(_current_test.assert_count == 0 and !_current_test.pending):
+		_lgr.risky('Test did not assert')
+
+	if(_parameter_handler == null):
+		_lgr.error(str('Parameterized test ', _current_test.name, ' did not call use_parameters for the default value of the parameter.'))
+		_fail(str('Parameterized test ', _current_test.name, ' did not call use_parameters for the default value of the parameter.'))
 	else:
-		_yield_between.tests_since_last_yield += 1
-	return should
+		while(!_parameter_handler.is_done()):
+			var cur_assert_count = _current_test.assert_count
+			await _run_test(test_script, test_name)
+			if(_current_test.assert_count == cur_assert_count and !_current_test.pending):
+				_lgr.risky('Test did not assert')
+
+	_parameter_handler = null
+
+
+# ------------------------------------------------------------------------------
+# Runs a single test given a test.gd instance and the name of the test to run.
+# ------------------------------------------------------------------------------
+func _run_test(script_inst, test_name):
+	_lgr.log_test_name()
+	_lgr.set_indent_level(1)
+	_orphan_counter.add_counter('test')
+
+	await script_inst.before_each()
+
+	start_test.emit(test_name)
+
+	await script_inst.call(test_name)
+
+	# if the test called pause_before_teardown then await until
+	# the continue button is pressed.
+	if(_pause_before_teardown and !_ignore_pause_before_teardown):
+		start_pause_before_teardown.emit()
+		await _wait_for_continue_button().end_pause_before_teardown
+
+	script_inst.clear_signal_watcher()
+
+	# call each post-each-test method until teardown is removed.
+	await script_inst.after_each()
+
+	# Free up everything in the _autofree.  Yield for a bit if we
+	# have anything with a queue_free so that they have time to
+	# free and are not found by the orphan counter.
+	var aqf_count = _autofree.get_queue_free_count()
+	_autofree.free_all()
+	if(aqf_count > 0):
+		await get_tree().create_timer(_auto_queue_free_delay).timeout
+
+	if(_log_level > 0):
+		_orphan_counter.print_orphans('test', _lgr)
+
+	_doubler.get_ignored_methods().clear()
+
+
+# ------------------------------------------------------------------------------
+# Calls after_all on the passed in test script and takes care of settings so all
+# logger output appears indented and with a proper heading
+#
+# Calls both pre-all-tests methods until prerun_setup is removed
+# ------------------------------------------------------------------------------
+func _call_before_all(test_script, collected_script):
+	var before_all_test_obj = GutUtils.CollectedTest.new()
+	before_all_test_obj.has_printed_name = false
+	before_all_test_obj.name = 'before_all'
+
+	collected_script.setup_teardown_tests.append(before_all_test_obj)
+	_current_test = before_all_test_obj
+
+	_lgr.inc_indent()
+	await test_script.before_all()
+	# before all does not need to assert anything so only mark it as run if
+	# some assert was done.
+	before_all_test_obj.was_run = before_all_test_obj.did_something()
+
+	_lgr.dec_indent()
+
+	_current_test = null
+
+
+# ------------------------------------------------------------------------------
+# Calls after_all on the passed in test script and takes care of settings so all
+# logger output appears indented and with a proper heading
+#
+# Calls both post-all-tests methods until postrun_teardown is removed.
+# ------------------------------------------------------------------------------
+func _call_after_all(test_script, collected_script):
+	var after_all_test_obj = GutUtils.CollectedTest.new()
+	after_all_test_obj.has_printed_name = false
+	after_all_test_obj.name = 'after_all'
+
+	collected_script.setup_teardown_tests.append(after_all_test_obj)
+	_current_test = after_all_test_obj
+
+	_lgr.inc_indent()
+	await test_script.after_all()
+	# after all does not need to assert anything so only mark it as run if
+	# some assert was done.
+	after_all_test_obj.was_run = after_all_test_obj.did_something()
+	_lgr.dec_indent()
+
+	_current_test = null
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func _should_skip_script(test_script, collected_script):
+	var skip_message = 'not skipped'
+	var skip_value = test_script.get('skip_script')
+	var should_skip = false
+
+	if(skip_value == null):
+		skip_value = test_script.should_skip_script()
+	else:
+		_lgr.deprecated('Using the skip_script var has been deprecated.  Implement the new should_skip_script() method in your test instead.')
+
+	if(skip_value != null):
+		if(typeof(skip_value) == TYPE_BOOL):
+			should_skip = skip_value
+			if(skip_value):
+				skip_message = 'script marked to skip'
+		elif(typeof(skip_value) == TYPE_STRING):
+			should_skip = true
+			skip_message = skip_value
+
+	if(should_skip):
+		var msg = str('- [Script skipped]:  ', skip_message)
+		_lgr.inc_indent()
+		_lgr.log(msg, _lgr.fmts.yellow)
+		_lgr.dec_indent()
+		collected_script.skip_reason = skip_message
+		collected_script.was_skipped = true
+
+	return should_skip
 
 # ------------------------------------------------------------------------------
 # Run all tests in a script.  This is the core logic for running tests.
-#
-# Note, this has to stay as a giant monstrosity of a method because of the
-# yields.
 # ------------------------------------------------------------------------------
-func _test_the_scripts():
-	_init_run()
-	var file = File.new()
+func _test_the_scripts(indexes=[]):
+	_orphan_counter.add_counter('pre_run')
 
-	for s in range(_test_scripts.size()):
-		_tests.clear()
-		set_title('Running:  ' + _test_scripts[s])
-		_print_script_heading(_test_scripts[s])
-		_new_summary.add_script(_test_scripts[s])
+	_print_versions(false)
+	var is_valid = _init_run()
+	if(!is_valid):
+		_lgr.error('Something went wrong and the run was aborted.')
+		return
 
-		if(!file.file_exists(_test_scripts[s])):
-			p("FAILED   COULD NOT FIND FILE:  " + _test_scripts[s])
+	_run_hook_script(get_pre_run_script_instance())
+	if(_pre_run_script_instance!= null and _pre_run_script_instance.should_abort()):
+		_lgr.error('pre-run abort')
+		end_run.emit()
+		return
+
+	start_run.emit()
+	_start_time = Time.get_ticks_msec()
+	_last_paint_time = _start_time
+
+	var indexes_to_run = []
+	if(indexes.size()==0):
+		for i in range(_test_collector.scripts.size()):
+			indexes_to_run.append(i)
+	else:
+		indexes_to_run = indexes
+
+
+	# loop through scripts
+	for test_indexes in range(indexes_to_run.size()):
+		var coll_script = _test_collector.scripts[indexes_to_run[test_indexes]]
+		_orphan_counter.add_counter('script')
+
+		if(coll_script.tests.size() > 0):
+			_lgr.set_indent_level(0)
+			_print_script_heading(coll_script)
+
+		if(!coll_script.is_loaded):
+			break
+
+		start_script.emit(coll_script)
+
+		var test_script = coll_script.get_new()
+
+		_setup_script(test_script, coll_script)
+		_doubler.set_strategy(_double_strategy)
+
+		# ----
+		# SHORTCIRCUIT
+		# skip_script logic
+		if(_should_skip_script(test_script, coll_script)):
+			continue
+		# ----
+
+		# !!!
+		# Hack so there isn't another indent to this monster of a method.  if
+		# inner class is set and we do not have a match then empty the tests
+		# for the current test.
+		# !!!
+		if(!_does_class_name_match(_inner_class_name, coll_script.inner_class_name)):
+			coll_script.tests = []
 		else:
-			var test_script = _init_test_script(_test_scripts[s])
-			_test_script_objects.append(test_script)
-			var script_result = null
+			coll_script.was_run = true
+			await _call_before_all(test_script, coll_script)
 
-			test_script.prerun_setup()
+		# Each test in the script
+		for i in range(coll_script.tests.size()):
+			_stubber.clear()
+			_spy.clear()
+			_current_test = coll_script.tests[i]
 
-			#yield between test scripts so things paint
-			if(_yield_between.should):
-				_yield_between.timer.set_wait_time(0.01)
-				_yield_between.timer.start()
-				yield(_yield_between.timer, 'timeout')
+			if((_unit_test_name != '' and _current_test.name.find(_unit_test_name) > -1) or
+				(_unit_test_name == '')):
 
-			_ctrls.test_progress.set_max(_tests.size())
-			for i in range(_tests.size()):
-				_current_test = _tests[i]
+				var ticks_before := Time.get_ticks_usec()
 
-				if((_unit_test_name != '' and _current_test.name.find(_unit_test_name) > -1) or
-				   (_unit_test_name == '')):
-					p(_current_test.name, 1)
-					_new_summary.add_test(_current_test.name)
-					#yield so things paint
-					if(_should_yield_now()):
-						_yield_between.timer.set_wait_time(0.001)
-						_yield_between.timer.start()
-						yield(_yield_between.timer, 'timeout')
+				if(_current_test.arg_count > 1):
+					_lgr.error(str('Parameterized test ', _current_test.name,
+						' has too many parameters:  ', _current_test.arg_count, '.'))
+				elif(_current_test.arg_count == 1):
+					_current_test.was_run = true
+					await _run_parameterized_test(test_script, _current_test.name)
+				else:
+					_current_test.was_run = true
+					await _run_test(test_script, _current_test.name)
 
-					test_script.setup()
+				if(!_current_test.did_something()):
+					_lgr.risky(str(_current_test.name, ' did not assert'))
 
-					script_result = test_script.call(_current_test.name)
-					#When the script yields it will return a GDFunctionState object
-					if(_is_function_state(script_result)):
-						if(!_was_yield_method_called):
-							p('/# Yield detected, waiting #/')
-						_was_yield_method_called = false
-						_waiting = true
-						while(_waiting):
-							p(WAITING_MESSAGE, 2)
-							_wait_timer.start()
-							yield(_wait_timer, 'timeout')
+				_current_test.has_printed_name = false
 
-					#if the test called pause_before_teardown then yield until
-					#the continue button is pressed.
-					if(_pause_before_teardown and !_ignore_pause_before_teardown):
-						p(PAUSE_MESSAGE, 1)
-						_waiting = true
-						_ctrls.continue_button.set_disabled(false)
-						yield(self, SIGNAL_STOP_YIELD_BEFORE_TEARDOWN)
+				_current_test.time_taken = (Time.get_ticks_usec() - ticks_before) / 1000000.0
 
-					test_script.clear_signal_watcher()
-					test_script.teardown()
+				end_test.emit()
 
-					if(_current_test.passed):
-						_ctrls.text_box.add_keyword_color(_current_test.name, Color(0, 1, 0))
-					else:
-						_ctrls.text_box.add_keyword_color(_current_test.name, Color(1, 0, 0))
-
-					# !!! STOP BUTTON SHORT CIRCUIT !!!
-					if(_stop_pressed):
-						_is_running = false
-						_update_controls()
-						_stop_pressed = false
-						p("STOPPED")
-						return
-
-					_ctrls.test_progress.set_value(i + 1)
-			test_script.postrun_teardown()
-			# This might end up being very resource intensive if the scripts
-			# don't clean up after themselves.  Might have to consolidate output
-			# into some other structure and kill the script objects with
-			# test_script.free() instead of remove child.
-			remove_child(test_script)
-			#END TESTS IN SCRIPT LOOP
+				# After each test, check to see if we shoudl wait a frame to
+				# paint based on how much time has elapsed since we last 'painted'
+				if(paint_after > 0.0):
+					var now = Time.get_ticks_msec()
+					var time_since = (now - _last_paint_time) / 1000.0
+					if(time_since > paint_after):
+						_last_paint_time = now
+						await get_tree().process_frame
 
 		_current_test = null
-		p("\n\n")
-		_ctrls.script_progress.set_value(s + 1)
-		#END TEST SCRIPT LOOP
+		_lgr.dec_indent()
+		_orphan_counter.print_orphans('script', _lgr)
 
+		if(_does_class_name_match(_inner_class_name, coll_script.inner_class_name)):
+			await _call_after_all(test_script, coll_script)
+
+		_log_test_children_warning(test_script)
+		# This might end up being very resource intensive if the scripts
+		# don't clean up after themselves.  Might have to consolidate output
+		# into some other structure and kill the script objects with
+		# test_script.free() instead of remove_at child.
+		_add_children_to.remove_child(test_script)
+
+		_lgr.set_indent_level(0)
+		if(test_script.get_assert_count() > 0):
+			var script_sum = str(coll_script.get_passing_test_count(), '/', coll_script.get_ran_test_count(), ' passed.')
+			_lgr.log(script_sum, _lgr.fmts.bold)
+
+		end_script.emit()
+		# END TEST SCRIPT LOOP
+
+	_lgr.set_indent_level(0)
+	# Give anything that is queued to be freed time to be freed before we count
+	# the orphans.  Without this, the last test's awaiter won't be freed
+	# yet, which messes with the orphans total.  There could also be objects
+	# the user has queued to be freed as well.
+	await get_tree().create_timer(.1).timeout
 	_end_run()
 
 
-
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 func _pass(text=''):
-	_summary.tally_passed += 1
-	_update_controls()
 	if(_current_test):
-		_new_summary.add_pass(_current_test.name, text)
+		_current_test.add_pass(text)
 
+
+# ------------------------------------------------------------------------------
+# Returns an empty string or "(call #x) " if the current test being run has
+# parameters.  The
+# ------------------------------------------------------------------------------
+func get_call_count_text():
+	var to_return = ''
+	if(_parameter_handler != null):
+		# This uses get_call_count -1 because test.gd's use_parameters method
+		# should have been called before we get to any calls for this method
+		# just due to how use_parameters works.  There isn't a way to know
+		# whether we are before or after that call.
+		to_return = str('params[', _parameter_handler.get_call_count() -1, '] ')
+	return to_return
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 func _fail(text=''):
-	_summary.tally_failed += 1
 	if(_current_test != null):
-		var line_text = '  at line ' + str(_current_test.line_number)
-		_new_summary.add_fail(_current_test.name, text + "\n    " + line_text)
-		_current_test.passed = false
+		var line_number = _extract_line_number(_current_test)
+		var line_text = '  at line ' + str(line_number)
 		p(line_text, LOG_LEVEL_FAIL_ONLY)
-	_update_controls()
+		# format for summary
+		line_text =  "\n    " + line_text
+		var call_count_text = get_call_count_text()
+		_current_test.line_number = line_number
+		_current_test.add_fail(call_count_text + text + line_text)
 
+
+# ------------------------------------------------------------------------------
+# This is "private" but is only used by the logger, it is not used internally.
+# It was either, make this weird method or "do it the right way" with signals
+# or some other crazy mechanism.
+# ------------------------------------------------------------------------------
+func _fail_for_error(err_text):
+	if(_current_test != null and treat_error_as_failure):
+		_fail(err_text)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 func _pending(text=''):
 	if(_current_test):
-		_new_summary.add_pending(_current_test.name, text)
+		_current_test.add_pending(text)
+
+
+# ------------------------------------------------------------------------------
+# Extracts the line number from curren stacktrace by matching the test case name
+# ------------------------------------------------------------------------------
+func _extract_line_number(current_test):
+	var line_number = -1
+	# if stack trace available than extraxt the test case line number
+	var stackTrace = get_stack()
+	if(stackTrace!=null):
+		for index in stackTrace.size():
+			var line = stackTrace[index]
+			var function = line.get("function")
+			if function == current_test.name:
+				line_number = line.get("line")
+	return line_number
+
+
+# ------------------------------------------------------------------------------
+# Gets all the files in a directory and all subdirectories if include_subdirectories
+# is true.  The files returned are all sorted by name.
+# ------------------------------------------------------------------------------
+func _get_files(path, prefix, suffix):
+	var files = []
+	var directories = []
+	# ignore addons/gut per issue 294
+	if(path == 'res://addons/gut'):
+		return [];
+
+	var d = DirAccess.open(path)
+	d.include_hidden = false
+	d.include_navigational = false
+
+	# Traversing a directory is kinda odd.  You have to start the process of
+	# listing the contents of a directory with list_dir_begin then use get_next
+	# until it returns an empty string.  Then I guess you should end it.
+	d.list_dir_begin()
+	var fs_item = d.get_next()
+	var full_path = ''
+	while(fs_item != ''):
+		full_path = path.path_join(fs_item)
+
+		# MUST use FileAccess since d.file_exists returns false for exported
+		# projects
+		if(FileAccess.file_exists(full_path)):
+			if(fs_item.begins_with(prefix) and fs_item.ends_with(suffix)):
+				files.append(full_path)
+		# MUST use DirAccess, d.dir_exists is false for exported projects.
+		elif(include_subdirectories and DirAccess.dir_exists_absolute(full_path)):
+			directories.append(full_path)
+
+		fs_item = d.get_next()
+	d.list_dir_end()
+
+	for dir in range(directories.size()):
+		var dir_files = _get_files(directories[dir], prefix, suffix)
+		for i in range(dir_files.size()):
+			files.append(dir_files[i])
+
+	files.sort()
+	return files
+
+
 #########################
 #
 # public
 #
 #########################
+func get_elapsed_time() -> float:
+	var to_return = 0.0
+	if(_start_time != 0.0):
+		to_return = Time.get_ticks_msec() - _start_time
+	to_return = to_return / 1000.0
+
+	return to_return
 
 # ------------------------------------------------------------------------------
 # Conditionally prints the text to the console/results variable based on the
 # current log level and what level is passed in.  Whenever currently in a test,
 # the text will be indented under the test.  It can be further indented if
 # desired.
+#
+# The first time output is generated when in a test, the test name will be
+# printed.
 # ------------------------------------------------------------------------------
-func p(text, level=0, indent=0):
+func p(text, level=0):
 	var str_text = str(text)
-	var to_print = ""
-	var printing_test_name = false
 
-	if(level <= _log_level):
-		if(_current_test != null):
-			#make sure everyting printed during the execution
-			#of a test is at least indented once under the test
-			if(indent == 0):
-				indent = 1
-
-			#Print the name of the current test if we haven't
-			#printed it already.
-			if(!_current_test.has_printed_name):
-				to_print = "* " + _current_test.name
-				_current_test.has_printed_name = true
-				printing_test_name = str_text == _current_test.name
-
-		if(!printing_test_name):
-			if(to_print != ""):
-				to_print += "\n"
-			#Make the indent
-			var pad = ""
-			for i in range(0, indent):
-				pad += "    "
-			to_print += pad + str_text
-			to_print = to_print.replace("\n", "\n" + pad)
-
-		if(_should_print_to_console):
-			print(to_print)
-
-		_log_text += to_print + "\n"
-
-		_ctrls.text_box.insert_text_at_cursor(to_print + "\n")
+	if(level <= GutUtils.nvl(_log_level, 0)):
+		_lgr.log(str_text)
 
 ################
 #
@@ -618,180 +976,167 @@ func p(text, level=0, indent=0):
 # ------------------------------------------------------------------------------
 # Runs all the scripts that were added using add_script
 # ------------------------------------------------------------------------------
-func test_scripts(run_rest=false):
-	clear_text()
-	_test_scripts.clear()
-
-	if(run_rest):
-		for idx in range(_ctrls.scripts_drop_down.get_selected(), _ctrls.scripts_drop_down.get_item_count()):
-			_test_scripts.append(_ctrls.scripts_drop_down.get_item_text(idx))
+func test_scripts(_run_rest=false):
+	if(_script_name != null and _script_name != ''):
+		var indexes = _get_indexes_matching_script_name(_script_name)
+		if(indexes == []):
+			_lgr.error(str(
+				"Could not find script matching '", _script_name, "'.\n",
+				"Check your directory settings and Script Prefix/Suffix settings."))
+			end_run.emit()
+		else:
+			_test_the_scripts(indexes)
 	else:
-		_test_scripts.append(_ctrls.scripts_drop_down.get_item_text(_ctrls.scripts_drop_down.get_selected()))
+		_test_the_scripts([])
 
-	_test_the_scripts()
+# alias
+func run_tests(run_rest=false):
+	test_scripts(run_rest)
 
 
 # ------------------------------------------------------------------------------
 # Runs a single script passed in.
 # ------------------------------------------------------------------------------
-func test_script(script):
-	_test_scripts.clear()
-	_test_scripts.append(script)
-	_test_the_scripts()
-	_test_scripts.clear()
+# func run_test_script(script):
+# 	_test_collector.set_test_class_prefix(_inner_class_prefix)
+# 	_test_collector.clear()
+# 	_test_collector.add_script(script)
+# 	_test_the_scripts()
+
 
 # ------------------------------------------------------------------------------
-# Adds a script to be run when test_scripts called
+# Adds a script to be run when test_scripts called.
 # ------------------------------------------------------------------------------
-func add_script(script, select_this_one=false):
-	if(_test_scripts.has(script)):
-		return
+func add_script(script):
+	if(!Engine.is_editor_hint()):
+		_test_collector.set_test_class_prefix(_inner_class_prefix)
+		_test_collector.add_script(script)
 
-	_test_scripts.append(script)
-	_ctrls.scripts_drop_down.add_item(script)
-	# Move the run_button in case the size of the path of the script caused the
-	# drop down to resize.
-	_ctrls.run_button.set_position(_ctrls.scripts_drop_down.get_position() + \
-	                           Vector2(_ctrls.scripts_drop_down.get_size().x + 5, 0))
-
-	if(select_this_one):
-		_ctrls.scripts_drop_down.select(_ctrls.scripts_drop_down.get_item_count() -1)
 
 # ------------------------------------------------------------------------------
 # Add all scripts in the specified directory that start with the prefix and end
 # with the suffix.  Does not look in sub directories.  Can be called multiple
 # times.
 # ------------------------------------------------------------------------------
-func add_directory(path, prefix=_file_prefix, suffix=_file_extension):
-	var d = Directory.new()
-	if(!d.dir_exists(path)):
+func add_directory(path, prefix=_file_prefix, suffix=".gd"):
+	# check for '' b/c the calls to addin the exported directories 1-6 will pass
+	# '' if the field has not been populated.  This will cause res:// to be
+	# processed which will include all files if include_subdirectories is true.
+	if(path == '' or path == null):
 		return
-	d.open(path)
-	d.list_dir_begin()
 
-	# Traversing a directory is kinda odd.  You have to start the process of listing
-	# the contents of a directory with list_dir_begin then use get_next until it
-	# returns an empty string.  Then I guess you should end it.
-	var thing = d.get_next()
-	var full_path = ''
-	while(thing != ''):
-		full_path = path + "/" + thing
-		#file_exists returns fasle for directories
-		if(d.file_exists(full_path)):
-			if(thing.begins_with(prefix) and thing.find(suffix) != -1):
-				add_script(full_path)
-		thing = d.get_next()
-	d.list_dir_end()
+	var dir = DirAccess.open(path)
+	if(dir == null):
+		_lgr.error(str('The path [', path, '] does not exist.'))
+	else:
+		var files = _get_files(path, prefix, suffix)
+		for i in range(files.size()):
+			if(_script_name == null or _script_name == '' or \
+					(_script_name != null and files[i].findn(_script_name) != -1)):
+				add_script(files[i])
+
 
 # ------------------------------------------------------------------------------
 # This will try to find a script in the list of scripts to test that contains
 # the specified script name.  It does not have to be a full match.  It will
-# select the first matching occurance so that this script will run when run_tests
+# select the first matching occurrence so that this script will run when run_tests
 # is called.  Works the same as the select_this_one option of add_script.
 #
 # returns whether it found a match or not
 # ------------------------------------------------------------------------------
 func select_script(script_name):
-	var found = false
-	var idx = 0
+	_script_name = script_name
+	_select_script = script_name
 
-	while(idx < _ctrls.scripts_drop_down.get_item_count() and !found):
-		if(_ctrls.scripts_drop_down.get_item_text(idx).find(script_name) != -1):
-			_ctrls.scripts_drop_down.select(idx)
-			found = true
-		else:
-			idx += 1
 
-	return found
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func export_tests(path=_export_path):
+	if(path == null):
+		_lgr.error('You must pass a path or set the export_path before calling export_tests')
+	else:
+		var result = _test_collector.export_tests(path)
+		if(result):
+			_lgr.info(_test_collector.to_s())
+			_lgr.info("Exported to " + path)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func import_tests(path=_export_path):
+	if(!FileAccess.file_exists(path)):
+		_lgr.error(str('Cannot import tests:  the path [', path, '] does not exist.'))
+	else:
+		_test_collector.clear()
+		var result = _test_collector.import_tests(path)
+		if(result):
+			_lgr.info("\n" + _test_collector.to_s())
+			_lgr.info("Imported from " + path)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func import_tests_if_none_found():
+	if(!_cancel_import and _test_collector.scripts.size() == 0):
+		import_tests()
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func export_if_tests_found():
+	if(_test_collector.scripts.size() > 0):
+		export_tests()
 
 ################
 #
 # MISC
 #
 ################
-func disable_strict_datatype_checks(should):
-	_disable_strict_datatype_checks = should
 
-func is_strict_datatype_checks_disabled():
-	return _disable_strict_datatype_checks
 
 # ------------------------------------------------------------------------------
-# Pauses the test and waits for you to press a confirmation button.  Useful when
-# you want to watch a test play out onscreen or inspect results.
 # ------------------------------------------------------------------------------
-func end_yielded_test():
-	_waiting = false
+func maximize():
+	_lgr.deprecated('gut.maximize')
+
 
 # ------------------------------------------------------------------------------
 # Clears the text of the text box.  This resets all counters.
 # ------------------------------------------------------------------------------
 func clear_text():
-	_ctrls.text_box.set_text("")
-	_ctrls.text_box.clear_colors()
-	update()
+	_lgr.deprecated('gut.clear_text')
+
 
 # ------------------------------------------------------------------------------
 # Get the number of tests that were ran
 # ------------------------------------------------------------------------------
 func get_test_count():
-	return _new_summary.get_totals().tests
+	return _test_collector.get_ran_test_count()
 
 # ------------------------------------------------------------------------------
 # Get the number of assertions that were made
 # ------------------------------------------------------------------------------
 func get_assert_count():
-	var t = _new_summary.get_totals()
-	return t.passing + t.failing
+	return _test_collector.get_assert_count()
 
 # ------------------------------------------------------------------------------
 # Get the number of assertions that passed
 # ------------------------------------------------------------------------------
 func get_pass_count():
-	return _new_summary.get_totals().passing
+	return _test_collector.get_pass_count()
 
 # ------------------------------------------------------------------------------
 # Get the number of assertions that failed
 # ------------------------------------------------------------------------------
 func get_fail_count():
-	return _new_summary.get_totals().failing
+	return _test_collector.get_fail_count()
 
 # ------------------------------------------------------------------------------
 # Get the number of tests flagged as pending
 # ------------------------------------------------------------------------------
 func get_pending_count():
-	return _new_summary.get_totals().pending
+	return _test_collector.get_pending_count()
 
-# ------------------------------------------------------------------------------
-# Set whether it should print to console or not.  Default is yes.
-# ------------------------------------------------------------------------------
-func set_should_print_to_console(should):
-	_should_print_to_console = should
-
-# ------------------------------------------------------------------------------
-# Get whether it is printing to the console
-# ------------------------------------------------------------------------------
-func get_should_print_to_console():
-	return _should_print_to_console
-
-# ------------------------------------------------------------------------------
-# Get the results of all tests ran as text.  This string is the same as is
-# displayed in the text box, and simlar to what is printed to the console.
-# ------------------------------------------------------------------------------
-func get_result_text():
-	return _log_text
-
-# ------------------------------------------------------------------------------
-# Set the log level.  Use one of the various LOG_LEVEL_* constants.
-# ------------------------------------------------------------------------------
-func set_log_level(level):
-	_log_level = level
-	_ctrls.log_level_slider.set_value(level)
-
-# ------------------------------------------------------------------------------
-# Get the current log level.
-# ------------------------------------------------------------------------------
-func get_log_level():
-	return _log_level
 
 # ------------------------------------------------------------------------------
 # Call this method to make the test pause before teardown so that you can inspect
@@ -800,140 +1145,9 @@ func get_log_level():
 func pause_before_teardown():
 	_pause_before_teardown = true;
 
-# ------------------------------------------------------------------------------
-# For batch processing purposes, you may want to ignore any calls to
-# pause_before_teardown that you forgot to remove.
-# ------------------------------------------------------------------------------
-func set_ignore_pause_before_teardown(should_ignore):
-	_ignore_pause_before_teardown = should_ignore
-	_ctrls.ignore_continue_checkbox.set_pressed(should_ignore)
-
-func get_ignore_pause_before_teardown():
-	return _ignore_pause_before_teardown
 
 # ------------------------------------------------------------------------------
-# Set to true so that painting of the screen will occur between tests.  Allows you
-# to see the output as tests occur.  Especially useful with long running tests that
-# make it appear as though it has humg.
-#
-# NOTE:  not compatible with 1.0 so this is disabled by default.  This will
-# change in future releases.
-# ------------------------------------------------------------------------------
-func set_yield_between_tests(should):
-	_yield_between.should = should
-
-func get_yield_between_tests():
-	return _yield_between.should
-
-# ------------------------------------------------------------------------------
-# Call _process or _fixed_process, if they exist, on obj and all it's children
-# and their children and so and so forth.  Delta will be passed through to all
-# the _process or _fixed_process methods.
-# ------------------------------------------------------------------------------
-func simulate(obj, times, delta):
-	for i in range(times):
-		if(obj.has_method("_process")):
-			obj._process(delta)
-		if(obj.has_method("_physics_process")):
-			obj._physics_process(delta)
-
-		for kid in obj.get_children():
-			simulate(kid, 1, delta)
-
-# ------------------------------------------------------------------------------
-# Starts an internal timer with a timeout of the passed in time.  A 'timeout'
-# signal will be sent when the timer ends.  Returns itself so that it can be
-# used in a call to yield...cutting down on lines of code.
-#
-# Example, yield to the Gut object for 10 seconds:
-#  yield(gut.set_yield_time(10), 'timeout')
-# ------------------------------------------------------------------------------
-func set_yield_time(time, text=''):
-	_yield_timer.set_wait_time(time)
-	_yield_timer.start()
-	var msg = '/# Yeilding (' + str(time) + 's)'
-	if(text == ''):
-		msg += ' #/'
-	else:
-		msg +=  ':  ' + text + ' #/'
-	p(msg, 1)
-	_was_yield_method_called = true
-	return self
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-func set_yield_signal_or_time(obj, signal_name, max_wait, text=''):
-	obj.connect(signal_name, self, '_yielding_callback', [true])
-	_yielding_to.obj = obj
-	_yielding_to.signal_name = signal_name
-
-	_yield_timer.set_wait_time(max_wait)
-	_yield_timer.start()
-	_was_yield_method_called = true
-	p(str('/# Yielding to signal "', signal_name, '" or for ', max_wait, ' seconds #/'))
-	return self
-
-# ------------------------------------------------------------------------------
-# get the specific unit test that should be run
-# ------------------------------------------------------------------------------
-func get_unit_test_name():
-	return _unit_test_name
-
-# ------------------------------------------------------------------------------
-# set the specific unit test that should be run.
-# ------------------------------------------------------------------------------
-func set_unit_test_name(test_name):
-	_unit_test_name = test_name
-
-# ------------------------------------------------------------------------------
-# Creates an empty file at the specified path
-# ------------------------------------------------------------------------------
-func file_touch(path):
-	var f = File.new()
-	f.open(path, f.WRITE)
-	f.close()
-
-# ------------------------------------------------------------------------------
-# deletes the file at the specified path
-# ------------------------------------------------------------------------------
-func file_delete(path):
-	var d = Directory.new()
-	d.open(path.get_base_dir())
-	d.remove(path)
-
-# ------------------------------------------------------------------------------
-# Checks to see if the passed in file has any data in it.
-# ------------------------------------------------------------------------------
-func is_file_empty(path):
-	var f = File.new()
-	f.open(path, f.READ)
-	var empty = f.get_len() == 0
-	f.close()
-	return empty
-
-# ------------------------------------------------------------------------------
-# deletes all files in a given directory
-# ------------------------------------------------------------------------------
-func directory_delete_files(path):
-	var d = Directory.new()
-	d.open(path)
-
-	# Traversing a directory is kinda odd.  You have to start the process of listing
-	# the contents of a directory with list_dir_begin then use get_next until it
-	# returns an empty string.  Then I guess you should end it.
-	d.list_dir_begin()
-	var thing = d.get_next() # could be a dir or a file or something else maybe?
-	var full_path = ''
-	while(thing != ''):
-		full_path = path + "/" + thing
-		#file_exists returns fasle for directories
-		if(d.file_exists(full_path)):
-			d.remove(full_path)
-		thing = d.get_next()
-	d.list_dir_end()
-
-# ------------------------------------------------------------------------------
-# Returns the instantiated script object that is currently being run.
+# Returns the script object instance that is currently being run.
 # ------------------------------------------------------------------------------
 func get_current_script_object():
 	var to_return = null
@@ -942,56 +1156,69 @@ func get_current_script_object():
 	return to_return
 
 
-# #######################
-# Moved method warnings.
-# #######################
-func moved_method(method_name):
-	p('[' + method_name + '] has been moved to the Test class.  To fix, remove "gut." from in front of it.')
-	_test_script_objects[-1]._fail('Method has been moved.')
-	_summary.moved_methods += 1
-func assert_eq(got, expected, text=""):
-	moved_method('assert_eq')
-func assert_ne(got, not_expected, text=""):
-	moved_method('assert_ne')
-func assert_gt(got, expected, text=""):
-	moved_method('assert_gt')
-func assert_lt(got, expected, text=""):
-	moved_method('assert_lt')
-func assert_true(got, text=""):
-	moved_method('assert_true')
-func assert_false(got, text=""):
-	moved_method('assert_false')
-func assert_between(got, expect_low, expect_high, text=""):
-	moved_method('assert_between')
-func assert_file_exists(file_path):
-	moved_method('assert_file_exists')
-func assert_file_does_not_exist(file_path):
-	moved_method('assert_file_does_not_exist')
-func assert_file_empty(file_path):
-	moved_method('assert_file_empty')
-func assert_file_not_empty(file_path):
-	moved_method('assert_file_not_empty')
-func assert_get_set_methods(obj, property, default, set_to):
-	moved_method('assert_get_set_methods')
-func assert_has(obj, element, text=""):
-	moved_method('assert_has')
-func assert_does_not_have(obj, element, text=""):
-	moved_method('assert_does_not_have')
-func pending(text=""):
-	moved_method('pending')
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func get_current_test_object():
+	return _current_test
 
 
-################################################################################
-# OneTest (INTERNAL USE ONLY)
-#	Used to keep track of info about each test ran.
-################################################################################
-class OneTest:
-	# indicator if it passed or not.  defaults to true since it takes only
-	# one failure to make it not pass.  _fail in gut will set this.
-	var passed = true
-	# the name of the function
-	var name = ""
-	# flag to know if the name has been printed yet.
-	var has_printed_name = false
-	# the line number the test is on
-	var line_number = -1
+## Returns a summary.gd object that contains all the information about
+## the run results.
+func get_summary():
+	return GutUtils.Summary.new(self)
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func get_pre_run_script_instance():
+	return _pre_run_script_instance
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func get_post_run_script_instance():
+	return _post_run_script_instance
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func show_orphans(should):
+	_lgr.set_type_enabled(_lgr.types.orphan, should)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func get_logger():
+	return _lgr
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+func get_test_script_count():
+	return _test_script_objects.size()
+
+
+
+
+# ##############################################################################
+# The MIT License (MIT)
+# =====================
+#
+# Copyright (c) 2023 Tom "Butch" Wesley
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+# ##############################################################################
